@@ -1,0 +1,26 @@
+{
+  "Fab_user": {
+    "senha": "123",
+    "nivel": "Fábrica"
+  },
+  "Dest_user": {
+    "senha": "123",
+    "nivel": "Destilaria"
+  },
+  "Cald_user": {
+    "senha": "123",
+    "nivel": "Caldeira"
+  },
+  "Gest_user": {
+    "senha": "123",
+    "nivel": "Gestão"
+  },
+  "AS_user": {
+    "senha": "123",
+    "nivel": "Análise de Sensibilidade"
+  },
+  "PDF_user": {
+    "senha": "123",
+    "nivel": "PDF"
+  }
+}
