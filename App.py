@@ -602,10 +602,11 @@ else:
         
                 st.subheader('Fábrica de Açúcar')
 
-                col1, col2, col3 = st.columns(3)
+                col1, col2, col3, col4 = st.columns(4)
                 col1.metric('Açúcar Produzido (ton/h)', f"{fabAcucar['Processo de Cozimento']['Açúcar Produzido (ton/h)']:.2f}")
                 col2.metric('Sacas Produzidas por Dia (50 kg)', f"{fabAcucar['Processo de Cozimento']['Sacas Produzidas por Dia (50 kg)']:.2f}")
                 col3.metric('SJM (%)', f"{fabAcucar['Processo de Cozimento']['SJM (%)']:.2f}")
+                col4.metric('Vazão de Mel', f"{fabAcucar['Processo de Cozimento']['Mel Final Produzido (ton/h)']:.2f}")
 
                 # ---------------- MÉTRICAS ----------------
         
