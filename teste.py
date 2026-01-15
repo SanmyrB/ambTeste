@@ -1,3 +1,6 @@
+import numpy as np
+from scipy.optimize import minimize
+
 Bcaldo = 17.08
 PolCaldo = 14.21
 Bmel = 67.92
@@ -46,7 +49,7 @@ vazMosto = MistResult["Tanque de Mistura"]["Vazão do Mosto (ton/h)"]
 brixMosto = MistResult["Tanque de Mistura"]["Pureza do Mosto (%)"]
 purzMosto = MistResult["Tanque de Mistura"]["Pureza do Mosto (%)"]
 
-def fermentacao(vazMosto, brixMosto, purzMosto, convert = 0.9):
+def fermentacao(vazMosto, brixMosto, purzMosto, convert = 0.8):
 
     # Vazão de Sacarose Disponível (kg/h)
     vazSac_kg = (vazMosto * brixMosto / 100 * purzMosto / 100) * 1000
@@ -84,181 +87,94 @@ def fermentacao(vazMosto, brixMosto, purzMosto, convert = 0.9):
     vazNF_m3 = vazNF_kg / meH2O
 
     # Vazão de Saída da Dorna
-    vazDorna_m3 = vazEt_m3 + vazNF_m3
+    vazVinho_m3 = vazEt_m3 + vazNF_m3
 
     # Cálculo do ºGL e concentração de etanol
     GL = vazEt_m3 / vazNF_m3 * 100
-    conctEt = vazEt_m3 / vazDorna_m3 * 100
+    conctEt = vazEt_m3 / vazVinho_m3
 
     return {"Fermentação": {
-                "Vazão de Saída da Dorna (m³/h)": round(vazDorna_m3, 2),
+                "Vazão de do Vinho Fermentado (m³/h)": round(vazVinho_m3, 2),
                 "Vazão de Etanol Disponível (m³/h)": round(vazEt_m3, 2),
                 "GL": round(GL, 2),
-                "Concentração de Etanol": round(conctEt, 2)
+                "Concentração de Etanol": round(conctEt, 4)
             }
         }
 
 ferment = fermentacao(vazMosto, brixMosto, purzMosto)
 
-vazDorna_m3 = ferment["Fermentação"]["Vazão de Saída da Dorna (m³/h)"]
+vazVinho_m3 = ferment["Fermentação"]["Vazão de do Vinho Fermentado (m³/h)"]
 vazEt_m3 = ferment["Fermentação"]["Vazão de Etanol Disponível (m³/h)"]
 concentEt = ferment["Fermentação"]["Concentração de Etanol"]
 
-def coluna_destilacao(
-    nome,
-    vazao_in,
-    frac_in,
-    frac_fundo,
-    frac_vap=None,
-    frac_liq=None
-):
-    """
-    Balanço simplificado de uma coluna de destilação de etanol.
-    """
+def Coluna_PNL (nome, vazVinho_m3, fracEt_in, fracEt_Topo, fracEt_Liq, fracEt_Fundo):
 
-    etanol_in = vazao_in * frac_in
-    saidas = {}
+    x = np.array([fracEt_Topo, fracEt_Liq, fracEt_Fundo])
 
-    # Trata valores None
-    frac_vap_calc = frac_vap if frac_vap is not None else 0.0
-    frac_liq_calc = frac_liq if frac_liq is not None else 0.0
+    def objetivo(Fs):
+        F1, F2, F3 = Fs
+        return x[1]*F2 + x[2]*F3 + 1e-4*(F1**2 + F2**2 + F3**2)
 
-    total_frac_sum = frac_vap_calc + frac_liq_calc + frac_fundo
-    if total_frac_sum == 0:
-        return {"coluna": nome, "saidas": {}}
+    # -----------------------------
+    # Restrições de igualdade
+    # -----------------------------
+    def balanco_total(Fs):
+        return Fs.sum() - vazVinho_m3
 
-    # --- Saída Vapor ---
-    if frac_vap is not None:
-        etanol_vap = etanol_in * (frac_vap_calc / total_frac_sum)
-        vapor_out = etanol_vap / frac_vap if frac_vap > 0 else 0.0
+    def balanco_etanol(Fs):
+        return np.dot(x, Fs) - vazVinho_m3 * fracEt_in
 
-        saidas["Vapor_Out"] = vapor_out
-        saidas["Etanol_Vapor"] = vapor_out * frac_vap
-        saidas["Frac_Et_Vapor"] = (
-            saidas["Etanol_Vapor"] / vapor_out if vapor_out > 0 else 0.0
-        )
+    constraints = [
+        {"type": "eq", "fun": balanco_total},
+        {"type": "eq", "fun": balanco_etanol}
+    ]
 
-    # --- Saída Líquida ---
-    if frac_liq is not None:
-        etanol_liq_topo = etanol_in * (frac_liq_calc / total_frac_sum)
-        liquido_out = etanol_liq_topo / frac_liq if frac_liq > 0 else 0.0
+    # -----------------------------
+    # Limites
+    # -----------------------------
+    bounds = [(0, None)] * 3
 
-        saidas["Liquido_Out"] = liquido_out
-        saidas["Etanol_Liquido"] = liquido_out * frac_liq
-        saidas["Frac_Et_Liquido"] = (
-            saidas["Etanol_Liquido"] / liquido_out if liquido_out > 0 else 0.0
-        )
+    # -----------------------------
+    # Chute inicial
+    # -----------------------------
+    x0 = np.array([10, 100, 157])
 
-    # --- Saída Fundo ---
-    etanol_fundo = etanol_in * (frac_fundo / total_frac_sum)
-    fundo_out = etanol_fundo / frac_fundo if frac_fundo > 0 else 0.0
-
-    saidas["Fundo_Out"] = fundo_out
-    saidas["Etanol_Fundo"] = fundo_out * frac_fundo
-    saidas["Frac_Et_Fundo"] = (
-        saidas["Etanol_Fundo"] / fundo_out if fundo_out > 0 else 0.0
+    # -----------------------------
+    # Resolução
+    # -----------------------------
+    res = minimize(
+        objetivo,
+        x0,
+        method="SLSQP",
+        bounds=bounds,
+        constraints=constraints
     )
 
-    return {
-        "coluna": nome,
-        "saidas": saidas
-    }
+    res.x = [float(x) for x in res.x]
 
-def sistema_destilacao_etanol_fundo(
-    vazao_vinho,
-    frac_vinho,
-    frac_topo_aa1_vap,
-    frac_topo_aa1_liq,
-    frac_fundo_d,
-    disponi_agric,
-    disponi_clim,
-    disponi_indust
-):
-    """
-    Sistema de destilação com colunas AA1, D e B,
-    considerando etanol no fundo da coluna D.
-    """
+    return {"nome": nome,
+            "Vazão do Topo (m³/h)": round(res.x[0], 2),
+            "Concentração do Topo": fracEt_Topo,
+            "Vazão do Líquido Intermediário (m³/h)": round(res.x[1], 2),
+            "Concentração do Líquido Intermediário": fracEt_Liq,
+            "Vazão do Fundo (m³/h)": round(res.x[2], 2),
+            "Concentração do Fundo": fracEt_Fundo,
+            "Etanol perdido (m³/h)": round(float(objetivo(res.x)),2)
+            }
 
-    # Disponibilidade operacional
-    disponi = min(disponi_clim, disponi_indust, disponi_agric) / 100
-    disponi_h = disponi * 24
+colunaAA1 = Coluna_PNL("Coluna AA1", vazVinho_m3, concentEt,
+                          fracEt_Topo=0.94, fracEt_Liq=0.05, fracEt_Fundo=0.01)
 
-    # --- Coluna AA1 ---
-    col_aa1 = coluna_destilacao(
-        nome="AA1",
-        vazao_in=vazao_vinho,
-        frac_in=frac_vinho,
-        frac_fundo=0.01,
-        frac_vap=frac_topo_aa1_vap,
-        frac_liq=frac_topo_aa1_liq
-    )
+vazTopo_m3 = colunaAA1["Vazão do Topo (m³/h)"]
+vazLiq_m3 = colunaAA1["Vazão do Líquido Intermediário (m³/h)"]
 
-    # --- Coluna D ---
-    feed_d = col_aa1["saidas"].get("Liquido_Out", 0.0)
-    frac_in_d = (
-        col_aa1["saidas"]["Etanol_Liquido"] / feed_d if feed_d > 0 else 0.0
-    )
+vazTotal = vazTopo_m3 + vazLiq_m3
+concentTotal = (vazTopo_m3 * colunaAA1["Concentração do Topo"] + vazLiq_m3 * colunaAA1["Concentração do Líquido Intermediário"]) / vazTotal
 
-    col_d = coluna_destilacao(
-        nome="D",
-        vazao_in=feed_d,
-        frac_in=frac_in_d,
-        frac_fundo=frac_fundo_d,
-        frac_vap=None,
-        frac_liq=0.05
-    )
-
-    # --- Coluna B ---
-    feed_b = (
-        col_aa1["saidas"].get("Vapor_Out", 0.0) +
-        col_d["saidas"].get("Fundo_Out", 0.0)
-    )
-
-    etanol_feed_b = (
-        col_aa1["saidas"].get("Etanol_Vapor", 0.0) +
-        col_d["saidas"].get("Etanol_Fundo", 0.0)
-    )
-
-    frac_in_b = etanol_feed_b / feed_b if feed_b > 0 else 0.0
-
-    col_b = coluna_destilacao(
-        nome="B",
-        vazao_in=feed_b,
-        frac_in=frac_in_b,
-        frac_fundo=0.01,
-        frac_vap=None,
-        frac_liq=0.95
-    )
-
-    # --- Resultados principais ---
-    residuos_totais = (
-        col_aa1["saidas"]["Fundo_Out"] +
-        col_d["saidas"]["Fundo_Out"] +
-        col_b["saidas"]["Fundo_Out"]
-    )
-
-    frac_et_residuos = (
-        (
-            col_aa1["saidas"]["Etanol_Fundo"] +
-            col_d["saidas"]["Etanol_Fundo"] +
-            col_b["saidas"]["Etanol_Fundo"]
-        ) / residuos_totais
-        if residuos_totais > 0 else 0.0
-    )
-
-    return {
-        "Destilacao": {
-            "Produto Final (ETANOL-2 Fundo D)": round(col_d["saidas"]["Etanol_Fundo"], 2),
-            "Produto Final (ETHID B)": round(col_b["saidas"]["Etanol_Liquido"], 2),
-            "Produto Final (ETHID B) diário":
-                round(col_b["saidas"]["Etanol_Liquido"] * disponi_h, 2),
-            "Resíduos Totais": round(residuos_totais, 2),
-            "Frac Etanol Resíduos": round(frac_et_residuos, 4),
-        }
-    }
-
-colunas = sistema_destilacao_etanol_fundo(vazDorna_m3, concentEt ,0.94, 0.05, 0.02, 100, 100, 100)
+colunaB = Coluna_PNL("Coluna B", vazTotal, concentTotal, fracEt_Topo=0.95, fracEt_Liq=0.04, fracEt_Fundo=0.01)
 
 print(MistResult)
 print(ferment)
-print(colunas)
+print(colunaAA1)
+print(colunaB)
+print(colunaB["Vazão do Topo (m³/h)"] * 24)
