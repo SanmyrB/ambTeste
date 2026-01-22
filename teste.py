@@ -6,8 +6,8 @@ Bcaldo = 17.08
 PolCaldo = 14.21
 Bmel = 67.92
 Melpurez = 58.92
-mCaldo = 211.62 # m³/h
-mMel = 22.24 # ton/h
+mCaldo = 208.95 # m³/h
+mMel = 75.84 # ton/h
 mFiltrado = 30.06 # ton/h
 Bfiltrado = 9.07
 Polfiltrado = 6.2
@@ -47,62 +47,88 @@ MistResult = tanqMistura(PolCaldo, Bcaldo,Bmel, Melpurez, mCaldo,
                          mMel, mFiltrado, Bfiltrado, Polfiltrado)
 
 vazMosto = MistResult["Tanque de Mistura"]["Vazão do Mosto (ton/h)"]
-brixMosto = MistResult["Tanque de Mistura"]["Pureza do Mosto (%)"]
+brixMosto = MistResult["Tanque de Mistura"]["Brix do Mosto (º)"]
 purzMosto = MistResult["Tanque de Mistura"]["Pureza do Mosto (%)"]
 
-def fermentacao(vazMosto, brixMosto, purzMosto, convert = 0.9):
+print(MistResult)
 
-    # Vazão de Sacarose Disponível (kg/h)
-    vazSac_kg = (vazMosto * brixMosto / 100 * purzMosto / 100) * 1000
+def fermentacao(vazMosto, brixMosto, purzMosto, convert = 0.8):
+    
+    # Hidrólise da Sacarose
 
-    # C6H15O6 -> 2C2H5OH + 2CO2
-    # Constantes esquiométricas
-    mmSac = 0.180 # kg/mol
-    mmEt = 0.04607 # kg/mol
-    mmCO2 = 0.044 # kg/mol
+    # C12H22O11 + H2O -> C6H12O6(Glicose) + C6H12O6(Frutose)
 
-    # Massa específica do Etanol
-    meEt = 789 # kg/m³
-    meH2O = 997 # kg/m³
+    # Fermentação Alcoólica
 
-    # Rendimento Teórico
-    redmT = (2 * mmEt) / mmSac
+    # C6H12O6 -> 2 C2H5OH + 2 CO2
+
+    # Equação Global da Fermentação
+
+    # C12H22O6 + H2O -> 4 C2H5OH + 4 CO2
+
+    # Massa Específica (kg/m3)
+
+    rhoEtanol = 789 # kg/m3
+    rhoCO2 = 1.842 # kg/m3
+    rhoH2O = 1000 # kg/m3
+    rhoSac = 1590 # kg/m3
+    
+    # Massa Molares
+    
+    MMSac = 0.342 # kg/mol
+    MMH2O = 0.018 # kg/mol
+    MMEtanol = 0.046 # kg/mol
+    MMCO2 = 0.044 # kg/mol
+
+    # Concentração de Sacarose no Mosto
+    concSac = (brixMosto / 100 * purzMosto / 100)
+
+    # Vazão de água no Mosto (kg/h)
+    vazH2O_ton = vazMosto - (vazMosto * brixMosto/100)
+    vazH2O_m3 = vazH2O_ton * 1000 / rhoH2O
+
+    # Vazão de Sacarose no Mosto (kg/h)
+    vazSac_ton = (vazMosto * concSac)
+
+    # Vazão de SNS no Mosto (kg/h)
+    vazSNS_ton = (vazMosto * brixMosto/100) - vazSac_ton
 
     # Vazão de Sacarose (mol/h)
-    vazSac_mol = vazSac_kg/mmSac
-    
-    # Vazão de Etanol (mol/h)
-    vazEt_mol = vazSac_mol * redmT * convert
+    vazSac_mol = vazSac_ton * 1000 / MMSac
 
-    # Vazão de Etanol (m³/h)
-    vazEt_kg = vazEt_mol * mmEt
-    vazEt_m3 = vazEt_kg / meEt
+    # Vazão de Etanol Produzido (mol/h)
+    vazEt_mol = vazSac_mol * 4 * convert
 
-    # Vazão de CO2
-    vazCO2_mol = vazSac_mol * ((2 * mmCO2)/mmSac) * convert
-    vazCO2_kg = vazCO2_mol * mmCO2
+    # Vazão de Etanol Produzido (m³/h)
+    vazEt_kg = vazEt_mol * MMEtanol
+    vazEt_m3 = vazEt_kg / rhoEtanol
 
-    # Cálculo da Massa que permanece no líquido
-    vazLiquid_kg = vazMosto * 1000 - vazCO2_kg
-    vazNF_kg = vazLiquid_kg - vazEt_kg # NF: Não Fermentáveis = água + não fermentáveis
-    vazNF_m3 = vazNF_kg / meH2O
+    # Vazão de CO2 Produzido (mol/h)
+    vazCO2_mol = vazSac_mol * 4 * convert
 
-    # Vazão de Saída da Dorna
-    vazVinho_m3 = vazEt_m3 + vazNF_m3
+    # Vazão de CO2 Produzido (m³/h)
+    vazCO2_kg = vazCO2_mol * MMCO2
+    vazCO2_m3 = vazCO2_kg / rhoCO2
 
-    # Cálculo do ºGL e concentração de etanol
-    GL = vazEt_m3 / vazNF_m3 * 100
-    conctEt = vazEt_m3 / vazVinho_m3
+    # vazão de Sacarose Restante (m³/h)
+    vazSacRest_mol = vazSac_mol * (1 - convert)
+    vazSacRest_kg = vazSacRest_mol * MMSac
+    vazSacRest_m3 = vazSacRest_kg / rhoSac
+
+    # Vazão do Sistema após Fermentação (m³/h)
+    vazVinho_m3 = vazH2O_m3 + vazEt_m3 + vazSacRest_m3 + (vazSNS_ton * 1000 / rhoH2O)
 
     return {"Fermentação": {
                 "Vazão de do Vinho Fermentado (m³/h)": round(vazVinho_m3, 2),
                 "Vazão de Etanol Disponível (m³/h)": round(vazEt_m3, 2),
-                "GL": round(GL, 2),
-                "Concentração de Etanol": round(conctEt, 4)
+                "ºGL": round(vazEt_m3 / (vazVinho_m3 - vazEt_m3) * 100, 2) if vazVinho_m3 > 0 else 0,
+                "Concentração de Etanol": round(vazEt_m3 / vazVinho_m3 * 100, 2) if vazVinho_m3 > 0 else 0
             }
         }
 
 ferment = fermentacao(vazMosto, brixMosto, purzMosto)
+
+print(ferment)
 
 vazVinho_m3 = ferment["Fermentação"]["Vazão de do Vinho Fermentado (m³/h)"]
 vazEt_m3 = ferment["Fermentação"]["Vazão de Etanol Disponível (m³/h)"]
@@ -149,7 +175,7 @@ def Coluna_MN(nome, vaz_in, fracEt_in, fracEt_Topo, fracEt_Liq, fracEt_Fundo, di
 
     if fracEt_Topo > 0 and fracEt_Liq > 0 and fracEt_Fundo > 0:
         # Parâmetros da primeira Equação 
-        p1 = (vaz_in * fracEt_in - (vaz_in * fracFundoCalc))/(fracLiqCalc - fracFundoCalc)
+        p1 = (vaz_in * (fracEt_in/100) - (vaz_in * fracFundoCalc))/(fracLiqCalc - fracFundoCalc)
         p2 = (fracVapCalc - fracFundoCalc)/(fracLiqCalc - fracFundoCalc)
     else:
         return "Erro: Fração de Etanol inválida."
@@ -196,14 +222,12 @@ colunaAA1 = Coluna_MN("Coluna AA1", vazVinho_m3, concentEt,
 vazS1 = colunaAA1["Coluna AA1"]["S1"]
 vazS2 = colunaAA1["Coluna AA1"]["S2"]
 vazTotal_colB = vazS1 + vazS2
-fracEt_in_colB = (vazS1 * 0.94 + vazS2 * 0.05) / (vazTotal_colB)
+fracEt_in_colB = (vazS1 * 0.94 + vazS2 * 0.05) / (vazTotal_colB) * 100
 
 colunaB = Coluna_MN("Coluna B", vazTotal_colB, fracEt_in_colB,
                          fracEt_Topo=0.95, fracEt_Liq=0.04, fracEt_Fundo=0.01,
                          disponiagric=100, disponiClima=100, disponiIndust=100)
 
-print(MistResult)
-print(ferment)
 print(colunaAA1)
 print(colunaB)
 print(colunaB["Coluna B"]["Total Produzido (m³/h)"])
